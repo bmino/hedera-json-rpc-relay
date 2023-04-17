@@ -68,6 +68,7 @@ export class EthImpl implements Eth {
   static ethCallCacheTtl = process.env.ETH_CALL_CACHE_TTL || 200;
   static ethBlockNumberCacheTtlMs = process.env.ETH_BLOCK_NUMBER_CACHE_TTL_MS || 1000;
   static ethGetBalanceCacheTtlMs = process.env.ETH_GET_BALANCE_CACHE_TTL_MS || 1000;
+  static ethGetTransactionCountCacheTtl = process.env.ETH_GET_TRANSACTION_COUNT_CACHE_TTL || 500;
 
   // endpoint metric callerNames
   static ethCall = 'eth_call';
@@ -850,26 +851,39 @@ export class EthImpl implements Eth {
   async getTransactionCount(address: string, blockNumOrTag: string, requestId?: string): Promise<string | JsonRpcError> {
     const requestIdPrefix = formatRequestIdMessage(requestId);
     this.logger.trace(`${requestIdPrefix} getTransactionCount(address=${address}, blockNumOrTag=${blockNumOrTag})`);
-    const blockNumber = await this.translateBlockTag(blockNumOrTag, requestId);
-    if (blockNumber === 0) {
-      return EthImpl.zeroHex;
-    } else if (address && !blockNumOrTag) {
-      // get latest ethereumNonce
-      const mirrorAccount = await this.mirrorNodeClient.getAccount(address, requestId);
-      if (mirrorAccount && mirrorAccount.ethereum_nonce) {
-        return EthImpl.numberTo0x(mirrorAccount.ethereum_nonce);
-      }
-    }
 
-    // check consensus node as back up
     try {
-      const result = await this.mirrorNodeClient.resolveEntityType(address, requestId, [constants.TYPE_ACCOUNT, constants.TYPE_CONTRACT]);
-      if (result?.type === constants.TYPE_ACCOUNT) {
-        const accountInfo = await this.sdkClient.getAccountInfo(result?.entity.account, EthImpl.ethGetTransactionCount, requestId);
-        return EthImpl.numberTo0x(Number(accountInfo.ethereumNonce));
+      // cache considerations for high load
+      const cacheKey = `eth_getTransactionCount_${address}_${blockNumOrTag}`;
+      let nonceCount = this.cache.get(cacheKey);
+      if (nonceCount) {
+        this.logger.trace(`${requestIdPrefix} returning cached value ${cacheKey}:${JSON.stringify(nonceCount)}`);
+        return nonceCount;
       }
-      else if (result?.type === constants.TYPE_CONTRACT) {
-        return EthImpl.numberTo0x(1);
+
+      if (blockNumOrTag) {
+        const blockNum = Number(blockNumOrTag);
+        if (EthImpl.blockTagIsLatestOrPending(blockNumOrTag)) {
+          // if latest or pending, get latest ethereumNonce form mirror node account API
+          await this.getAccountLatestEthereumNonce(address, requestId);
+        } else if (blockNumOrTag === EthImpl.blockEarliest) {
+          // for earliest, get the account, get the created time stamp and get the account info at that time stamp
+        } else if (blockNum === 0) {
+          return EthImpl.zeroHex;
+        } else if (!isNaN(blockNum)) {
+          // for a valid block number, get the ethereumNonce from the mirror node account API with timestamp. Noe this is currently only returning latest info
+        } else {
+          // throw an '-39001: Unknown block' error per api-spec
+        }
+      } else {
+        // if latest or pending, get latest ethereumNonce form mirror node account API
+        return await this.getAccountLatestEthereumNonce(address, requestId);
+      }
+
+      if (nonceCount) {
+        this.logger.trace(`${requestIdPrefix} caching ${cacheKey}:${nonceCount} for ${EthImpl.ethGetTransactionCountCacheTtl} ms`);
+        this.cache.set(cacheKey, nonceCount, { ttl: EthImpl.ethGetTransactionCountCacheTtl });
+        return nonceCount;
       }
 
       return EthImpl.zeroHex;
@@ -1540,6 +1554,16 @@ export class EthImpl implements Eth {
     })
 
     return logs;
+  }
+
+  private async getAccountLatestEthereumNonce(address: string, requestId?: string) {
+    // if latest or pending, get latest ethereumNonce form mirror node account API
+    const mirrorAccount = await this.mirrorNodeClient.getAccount(address, requestId);
+    if (mirrorAccount && mirrorAccount.ethereum_nonce) {
+      return EthImpl.numberTo0x(mirrorAccount.ethereum_nonce);
+    }
+
+    return EthImpl.zeroHex;
   }
 
   async getLogs(blockHash: string | null, fromBlock: string | 'latest', toBlock: string | 'latest', address: string | [string] | null, topics: any[] | null, requestId?: string): Promise<Log[]> {
