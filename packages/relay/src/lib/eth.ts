@@ -68,7 +68,7 @@ export class EthImpl implements Eth {
   static ethCallCacheTtl = process.env.ETH_CALL_CACHE_TTL || 200;
   static ethBlockNumberCacheTtlMs = process.env.ETH_BLOCK_NUMBER_CACHE_TTL_MS || 1000;
   static ethGetBalanceCacheTtlMs = process.env.ETH_GET_BALANCE_CACHE_TTL_MS || 1000;
-  static ethGetTransactionCountCacheTtl = process.env.ETH_GET_TRANSACTION_COUNT_CACHE_TTL || 500;
+  static ethGetTransactionCountCacheTtl = process.env.ETH_GET_TRANSACTION_COUNT_CACHE_TTL || 1500;
 
   // endpoint metric callerNames
   static ethCall = 'eth_call';
@@ -863,21 +863,24 @@ export class EthImpl implements Eth {
 
       if (blockNumOrTag) {
         const blockNum = Number(blockNumOrTag);
-        if (EthImpl.blockTagIsLatestOrPending(blockNumOrTag)) {
+        if (blockNum === 0) {
+          return EthImpl.zeroHex;
+        } else if (EthImpl.blockTagIsLatestOrPending(blockNumOrTag)) {
           // if latest or pending, get latest ethereumNonce form mirror node account API
-          await this.getAccountLatestEthereumNonce(address, requestId);
+          nonceCount = await this.getAccountLatestEthereumNonce(address, requestId);
         } else if (blockNumOrTag === EthImpl.blockEarliest) {
           // for earliest, get the account, get the created time stamp and get the account info at that time stamp
-        } else if (blockNum === 0) {
           return EthImpl.zeroHex;
         } else if (!isNaN(blockNum)) {
-          // for a valid block number, get the ethereumNonce from the mirror node account API with timestamp. Noe this is currently only returning latest info
+          // for a valid block number, get the ethereumNonce from the mirror node account API with timestamp. Note this is currently only returning latest info in the interrim
+          nonceCount = await this.getAccountLatestEthereumNonce(address, requestId);
         } else {
-          // throw an '-39001: Unknown block' error per api-spec
+          // return a '-39001: Unknown block' error per api-spec
+          return predefined.UNKNOWN_BLOCK;
         }
       } else {
-        // if latest or pending, get latest ethereumNonce form mirror node account API
-        return await this.getAccountLatestEthereumNonce(address, requestId);
+        // if no block consideration, get latest ethereumNonce form mirror node account API
+        nonceCount = await this.getAccountLatestEthereumNonce(address, requestId);
       }
 
       if (nonceCount) {
@@ -1557,7 +1560,7 @@ export class EthImpl implements Eth {
   }
 
   private async getAccountLatestEthereumNonce(address: string, requestId?: string) {
-    // if latest or pending, get latest ethereumNonce form mirror node account API
+    // get latest ethereumNonce from mirror node account API
     const mirrorAccount = await this.mirrorNodeClient.getAccount(address, requestId);
     if (mirrorAccount && mirrorAccount.ethereum_nonce) {
       return EthImpl.numberTo0x(mirrorAccount.ethereum_nonce);

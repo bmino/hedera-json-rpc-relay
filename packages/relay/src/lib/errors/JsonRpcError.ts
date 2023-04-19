@@ -211,5 +211,10 @@ export const predefined = {
     name: 'Exceeded maximum allowed subscriptions',
     code: -32608,
     message: 'Exceeded maximum allowed subscriptions'
-  })
+  }),
+  'UNKNOWN_BLOCK': new JsonRpcError({
+    name: 'Unknown block',
+    code: -39001,
+    message: 'Unknown block'
+  }),
 };
