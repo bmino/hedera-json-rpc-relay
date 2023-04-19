@@ -854,7 +854,7 @@ export class EthImpl implements Eth {
 
     try {
       // cache considerations for high load
-      const cacheKey = `eth_getTransactionCount_${address}_${blockNumOrTag}`;
+      const cacheKey = `eth_getTransactionCount_${address}`;
       let nonceCount = this.cache.get(cacheKey);
       if (nonceCount) {
         this.logger.trace(`${requestIdPrefix} returning cached value ${cacheKey}:${JSON.stringify(nonceCount)}`);
