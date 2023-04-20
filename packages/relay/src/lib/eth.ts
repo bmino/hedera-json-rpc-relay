@@ -933,6 +933,9 @@ export class EthImpl implements Eth {
       if (timeDiff > 20) {
         // we only support up to 10 blocks back, searches beyond this may be too costly
         return predefined.INTERNAL_ERROR('Searches beyond 10 blocks are not supported');
+      } else if (timeDiff <= 20) { 
+        // if block is within recent range return current nonce count
+        return account.ethereum_nonce;
       }
 
       endTimestamp = block.timestamp.to;
