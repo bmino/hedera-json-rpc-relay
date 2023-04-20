@@ -870,10 +870,9 @@ export class EthImpl implements Eth {
           nonceCount = await this.getAccountLatestEthereumNonce(address, requestId);
         } else if (blockNumOrTag === EthImpl.blockEarliest) {
           // for earliest, get the account, get the created time stamp and get the account info at that time stamp
-          return EthImpl.zeroHex;
+          return this.getAccountNonceByTransactionCount(address, blockNumOrTag, true, requestId);
         } else if (!isNaN(blockNum)) {
-          // for a valid block number, get the ethereumNonce from the mirror node account API with timestamp. Note this is currently only returning latest info in the interrim
-          nonceCount = await this.getAccountLatestEthereumNonce(address, requestId);
+          return this.getAccountNonceByTransactionCount(address, blockNum, false, requestId);
         } else {
           // return a '-39001: Unknown block' error per api-spec
           return predefined.UNKNOWN_BLOCK;
@@ -897,6 +896,58 @@ export class EthImpl implements Eth {
       }
       return predefined.INTERNAL_ERROR();
     }
+  }
+
+  private async getAccountNonceByTransactionCount(address: string, blockNum: any, earliest: boolean, requestId: string | undefined) {
+    const account = await this.mirrorNodeClient.getAccountsByAddress(address, requestId);
+    if (account === null) {
+      return predefined.NON_EXISTING_ACCOUNT(address);
+    }
+
+    // we don't support calculation of the nonce for accounts with 0 or more than 100 transactions
+    if (account.ethereum_nonce === 0 || account.ethereum_nonce > 100) {
+      return predefined.INTERNAL_ERROR('Searches for accounts with large nonces are not supported');
+    }
+
+    let endTimestamp;
+    if (earliest) {
+      // note the mirror node may be a partial one, in which case there may be a valid block with number greater 1.
+      const block = await this.mirrorNodeClient.getEarliestBlock(requestId);
+      if (block == null) {
+        return predefined.INTERNAL_ERROR('No network blocks found');
+      }
+
+      endTimestamp = block.timestamp.to;
+    } else {
+      // if a valid block number, get the block timestamp and search for the all the ethereumtransaction within the time period
+      // should have a cache consideration here for the last timestamp of the last EthereumTransaction for the account
+      const block = await this.mirrorNodeClient.getBlock(blockNum, requestId); // consider caching error responses
+      if (block == null) {
+        return predefined.UNKNOWN_BLOCK;
+      }
+      
+      // check time diff between block and account details block timestamp
+      const latestBlockTimestamp = Number(account.balance.timestamp.split('.')[0]);
+      const blockTimestamp = Number(block.timestamp.from.split('.')[0]);
+      const timeDiff = latestBlockTimestamp - blockTimestamp;
+      if (timeDiff > 20) {
+        // we only support up to 10 blocks back, searches beyond this may be too costly
+        return predefined.INTERNAL_ERROR('Searches beyond 10 blocks are not supported');
+      }
+
+      endTimestamp = block.timestamp.to;
+    }
+    
+    return await this.getEthereumTransactionTypeCount(address, endTimestamp, requestId);
+  }
+
+  private async getEthereumTransactionTypeCount(address: string, timestamp: any, requestId: string | undefined) {
+    const ethereumTransactions = await this.mirrorNodeClient.getAccountEthereumTransactionsByTimestampFirstPage(address, timestamp, requestId);
+    if (ethereumTransactions == null || ethereumTransactions.transactions == null || ethereumTransactions.transactions.length === 0) {
+      return 0;
+    }
+
+    return ethereumTransactions.transactions.filter((tx) => tx.name === 'ETHEREUMTRANSACTION').length;
   }
 
   /**

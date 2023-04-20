@@ -56,7 +56,8 @@ export interface IContractLogsResultsParams {
 }
 
 export class MirrorNodeClient {
-    private static GET_ACCOUNTS_ENDPOINT = 'accounts/';
+    private static GET_ACCOUNTS_ENDPOINT = 'accounts';
+    private static GET_ACCOUNT_ENDPOINT = 'accounts/';
     private static GET_BALANCE_ENDPOINT = 'balances';
     private static GET_BLOCK_ENDPOINT = 'blocks/';
     private static GET_BLOCKS_ENDPOINT = 'blocks';
@@ -78,10 +79,11 @@ export class MirrorNodeClient {
     private static GET_TRANSACTIONS_ENDPOINT = 'transactions';
     private static CONTRACT_CALL_ENDPOINT = 'contracts/call';
 
+    private static ACCOUNT_TIMESTAMP_PROPERTY = 'timestamp';
+    private static ACCOUNT_TRANSACTION_TYPE_PROPERTY = 'transaction_type';
     private static CONTRACT_RESULT_LOGS_PROPERTY = 'logs';
-    private static CONTRACT_STATE_PROPERTY = 'state';
 
-
+    private static ETHEREUM_TRANSACTION_TYPE = 'ETHEREUMTRANSACTION';
 
     private static ORDER = {
         ASC: 'asc',
@@ -309,15 +311,38 @@ export class MirrorNodeClient {
     }
 
     public async getAccountLatestTransactionByAddress(idOrAliasOrEvmAddress: string, requestId?: string): Promise<object> {
-        return this.get(`${MirrorNodeClient.GET_ACCOUNTS_ENDPOINT}${idOrAliasOrEvmAddress}?order=desc&limit=1`,
-            MirrorNodeClient.GET_ACCOUNTS_ENDPOINT,
+        return this.get(`${MirrorNodeClient.GET_ACCOUNT_ENDPOINT}${idOrAliasOrEvmAddress}?order=desc&limit=1`,
+            MirrorNodeClient.GET_ACCOUNT_ENDPOINT,
             [400],
             requestId);
     }
 
     public async getAccount(idOrAliasOrEvmAddress: string, requestId?: string) {
-        return this.get(`${MirrorNodeClient.GET_ACCOUNTS_ENDPOINT}${idOrAliasOrEvmAddress}`,
+        return this.get(`${MirrorNodeClient.GET_ACCOUNT_ENDPOINT}${idOrAliasOrEvmAddress}`,
+            MirrorNodeClient.GET_ACCOUNT_ENDPOINT,
+            [400, 404],
+            requestId);
+    }
+
+    public async getAccountsByAddress(idOrAliasOrEvmAddress: string, requestId?: string) {
+        const queryParamObject = {};
+        this.setQueryParam(queryParamObject, 'account.id', idOrAliasOrEvmAddress);
+        this.setLimitOrderParams(queryParamObject, this.getLimitOrderQueryParam(constants.MIRROR_NODE_QUERY_LIMIT, constants.ORDER.DESC));
+        const queryParams = this.getQueryParams(queryParamObject);
+        return this.get(`${MirrorNodeClient.GET_ACCOUNT_ENDPOINT}${queryParams}`,
             MirrorNodeClient.GET_ACCOUNTS_ENDPOINT,
+            [400],
+            requestId);
+    }
+
+    public async getAccountEthereumTransactionsByTimestampFirstPage(idOrAliasOrEvmAddress: string, timestampFrom: string, requestId?: string) {
+        const queryParamObject = {};
+        this.setQueryParam(queryParamObject, MirrorNodeClient.ACCOUNT_TRANSACTION_TYPE_PROPERTY, MirrorNodeClient.ETHEREUM_TRANSACTION_TYPE);
+        this.setQueryParam(queryParamObject, MirrorNodeClient.ACCOUNT_TIMESTAMP_PROPERTY, `lte:${timestampFrom}`);
+        this.setLimitOrderParams(queryParamObject, this.getLimitOrderQueryParam(constants.MIRROR_NODE_QUERY_LIMIT, constants.ORDER.DESC));
+        const queryParams = this.getQueryParams(queryParamObject);
+        return this.get(`${MirrorNodeClient.GET_ACCOUNT_ENDPOINT}${idOrAliasOrEvmAddress}${queryParams}`,
+            MirrorNodeClient.GET_ACCOUNT_ENDPOINT,
             [400, 404],
             requestId);
     }
@@ -507,6 +532,9 @@ export class MirrorNodeClient {
         );
     }
 
+    public async getEarliestBlock(requestId?: string) {
+        return this.getBlocks(undefined, undefined, this.getLimitOrderQueryParam(1, MirrorNodeClient.ORDER.DESC), requestId);
+    }
 
     public async getLatestBlock(requestId?: string) {
         return this.getBlocks(undefined, undefined, this.getLimitOrderQueryParam(1, MirrorNodeClient.ORDER.DESC), requestId);
