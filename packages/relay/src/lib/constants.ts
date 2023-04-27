@@ -75,3 +75,4 @@ export default {
 
     LONG_ZERO_PREFIX: '0x000000000000',
 };
+
