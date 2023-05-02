@@ -23,9 +23,8 @@ import { solidity } from 'ethereum-waffle';
 import chai, { expect } from 'chai';
 import { AccountId, Hbar } from '@hashgraph/sdk';
 //Constants are imported with different definitions for better readability in the code.
-import Constants from '../../../../relay/src/lib/constants';
-import Events from '../../../../relay/src/lib/constants';
-import RelayCalls from '../../../../relay/src/lib/constants';
+import Constants from '../../helpers/constants';
+
 chai.use(solidity);
 
 import { AliasAccount } from '../../clients/servicesClient';
@@ -191,28 +190,28 @@ describe('@precompile-calls Tests for eth_call with HTS', async function () {
         account2LongZero = Utils.idToEvmAddress(accounts[2].accountId.toString());
 
         // Transfer and approve token amounts
-        const rec1 = await IERC20.transfer(accounts[1].address, 100, Constants.GAS_LIMIT_1_000_000);
+        const rec1 = await IERC20.transfer(accounts[1].address, 100, Constants.GAS.LIMIT_1_000_000);
         await rec1.wait();
-        const rec2 = await IERC20.approve(accounts[2].address, 200, Constants.GAS_LIMIT_1_000_000);
+        const rec2 = await IERC20.approve(accounts[2].address, 200, Constants.GAS.LIMIT_1_000_000);
         await rec2.wait();
 
-        const rec3 = await IERC721.transferFrom(accounts[0].address, accounts[1].address, nftSerial, Constants.GAS_LIMIT_1_000_000);
+        const rec3 = await IERC721.transferFrom(accounts[0].address, accounts[1].address, nftSerial, Constants.GAS.LIMIT_1_000_000);
         await rec3.wait();
-        const rec4 = await IERC721.connect(accounts[1].wallet).approve(accounts[2].address, nftSerial, Constants.GAS_LIMIT_1_000_000);
+        const rec4 = await IERC721.connect(accounts[1].wallet).approve(accounts[2].address, nftSerial, Constants.GAS.LIMIT_1_000_000);
         await rec4.wait();
-        const rec5 = await IERC721.connect(accounts[1].wallet).setApprovalForAll(accounts[0].address, true, Constants.GAS_LIMIT_1_000_000);
+        const rec5 = await IERC721.connect(accounts[1].wallet).setApprovalForAll(accounts[0].address, true, Constants.GAS.LIMIT_1_000_000);
         await rec5.wait();
 
         // Deploy a contract implementing HederaTokenService
         const HederaTokenServiceImplFactory = new ethers.ContractFactory(HederaTokenServiceImplJson.abi, HederaTokenServiceImplJson.bytecode, accounts[0].wallet);
-        htsImpl = await HederaTokenServiceImplFactory.deploy(Constants.GAS_LIMIT_15_000_000);
+        htsImpl = await HederaTokenServiceImplFactory.deploy(Constants.GAS.LIMIT_15_000_000);
 
         const rec6 = await htsImpl.deployTransaction.wait();
         htsImplAddress = rec6.contractAddress;
 
         // Deploy the Token Management contract
         const TokenManagementContractFactory = new ethers.ContractFactory(TokenManagementContractJson.abi, TokenManagementContractJson.bytecode, accounts[0].wallet);
-        TokenManager = await TokenManagementContractFactory.deploy(Constants.GAS_LIMIT_15_000_000);
+        TokenManager = await TokenManagementContractFactory.deploy(Constants.GAS.LIMIT_15_000_000);
         const rec7 = await htsImpl.deployTransaction.wait();
 
         tokenAddresses = [tokenAddressNoFees, tokenAddressFixedHbarFees, tokenAddressFixedTokenFees, tokenAddressFractionalFees, tokenAddressAllFees];
@@ -279,16 +278,16 @@ describe('@precompile-calls Tests for eth_call with HTS', async function () {
         //TODO remove this it when should be able to freeze and unfreeze token2 is implemented -> https://github.com/hashgraph/hedera-json-rpc-relay/issues/1131 
         it("Function with HederaTokenService.isFrozen(token, account) - using long zero address", async () => {
             // freeze token
-            const freezeTx = await TokenManager.freezeTokenPublic(tokenAddress, accounts[1].wallet.address, Constants.GAS_LIMIT_1_000_000);
-            const responseCodeFreeze = (await freezeTx.wait()).events.filter(e => e.event === Events.ResponseCode)[0].args.responseCode;
+            const freezeTx = await TokenManager.freezeTokenPublic(tokenAddress, accounts[1].wallet.address, Constants.GAS.LIMIT_1_000_000);
+            const responseCodeFreeze = (await freezeTx.wait()).events.filter(e => e.event === Constants.HTS_CONTRACT_EVENTS.ResponseCode)[0].args.responseCode;
             expect(responseCodeFreeze).to.equal(TX_SUCCESS_CODE);
 
             const isFrozen = await htsImpl.callStatic.isTokenFrozen(tokenAddress, account1LongZero);
             expect(isFrozen).to.eq(true);
 
             // unfreeze token
-            const unfreezeTx = await TokenManager.unfreezeTokenPublic(tokenAddress, accounts[1].wallet.address, Constants.GAS_LIMIT_1_000_000);
-            const responseCodeUnfreeze = (await unfreezeTx.wait()).events.filter(e => e.event === Events.ResponseCode)[0].args.responseCode;
+            const unfreezeTx = await TokenManager.unfreezeTokenPublic(tokenAddress, accounts[1].wallet.address, Constants.GAS.LIMIT_1_000_000);
+            const responseCodeUnfreeze = (await unfreezeTx.wait()).events.filter(e => e.event === Constants.HTS_CONTRACT_EVENTS.ResponseCode)[0].args.responseCode;
             expect(responseCodeUnfreeze).to.equal(TX_SUCCESS_CODE);
         });
 
@@ -556,7 +555,7 @@ describe('@precompile-calls Tests for eth_call with HTS', async function () {
             };
 
             await relay.callFailing(
-                RelayCalls.ETH_CALL,
+                Constants.ETH_ENDPOINTS.ETH_CALL,
                 [callData, 'latest'],
                 predefined.NON_EXISTING_CONTRACT('0x' + NON_EXISTING_ACCOUNT),
                 requestId
@@ -572,7 +571,7 @@ describe('@precompile-calls Tests for eth_call with HTS', async function () {
             };
 
             await relay.callFailing(
-                RelayCalls.ETH_CALL,
+                Constants.ETH_ENDPOINTS.ETH_CALL,
                 [callData, 'latest'],
                 predefined.NON_EXISTING_ACCOUNT('0x' + NON_EXISTING_ACCOUNT),
                 requestId
@@ -588,7 +587,7 @@ describe('@precompile-calls Tests for eth_call with HTS', async function () {
             };
 
             await relay.callFailing(
-                RelayCalls.ETH_CALL,
+                Constants.ETH_ENDPOINTS.ETH_CALL,
                 [callData, 'latest'],
                 predefined.CONTRACT_REVERT(),
                 requestId
@@ -604,7 +603,7 @@ describe('@precompile-calls Tests for eth_call with HTS', async function () {
             };
 
             await relay.callFailing(
-                RelayCalls.ETH_CALL,
+                Constants.ETH_ENDPOINTS.ETH_CALL,
                 [callData, 'latest'],
                 predefined.CONTRACT_REVERT(),
                 requestId
